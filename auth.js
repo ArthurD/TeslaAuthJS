@@ -1,8 +1,11 @@
+    // Helper library to authenticate to Tesla Owner API.  Includes support for MFA.
     const axios = require('axios');
     const sha256 = require("js-sha256");
     const URLSafeBase64 = require('urlsafe-base64');
     const TESLA_CLIENT_ID = "81527cff06843c8634fdc09e8ac0abefb46ac849f38fe1e431c2ef2106796384";
     const TESLA_CLIENT_SECRET = "c7257eb71a564034f9419ee651c7d0e5f7aa6bfbd18bafb5c5c033b093bb2fa3";
+    const DEBUG = true;
+    const DEBUG_ERRORS = true;
 
     let loginInfo = {
         CodeVerifier: "",
@@ -10,10 +13,33 @@
         State: "",
     };
 
-    // Initialisation
+    // Constructor and HttpClient initialisation
     function Init() {
         loginInfo.CodeVerifier = RandomString(86);
         loginInfo.State = RandomString(20);
+    }
+    
+    function DebugError(msg) { 
+        if(DEBUG_ERRORS) {
+            console.log(msg);
+        }
+    }
+    
+    function DebugLog(msg) { 
+      if(DEBUG) { 
+        console.log(msg);
+      }
+    }
+    
+    function GetStandardHeaders() {
+        let x = {
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'User-Agent': 'TeslaAuthJS/1.0',
+            }
+        };
+        return x;
     }
 
     // Public API for browser-assisted auth
@@ -32,28 +58,39 @@
         return url.toString();
     }
 
+    //public async Task<Tokens> GetTokenAfterLoginAsync(string redirectUrl, CancellationToken cancellationToken = default) {
     function GetTokenAfterLoginAsync(redirectUrl, callback) {
-      
         // URL is something like https://auth.tesla.com/void/callback?code=b6a6a44dea889eb08cd8afe5adc16353662cc5d82ba0c6044c95b13d6f…"
         let code = new URL(redirectUrl).searchParams.get('code');
 
         ExchangeCodeForBearerTokenAsync(code, function (results) {
-            ExchangeAccessTokenForBearerTokenAsync(results.AccessToken, function (accessAndRefreshTokens) {
-                // console.log("final results...");
-                let final_token_data = {
-                    AccessToken: accessAndRefreshTokens.AccessToken,
-                    RefreshToken: results.RefreshToken,
-                    CreatedAt: accessAndRefreshTokens.CreatedAt,
-                    ExpiresIn: accessAndRefreshTokens.ExpiresIn
-                };
-                // console.log(final_token_data);
-                callback(final_token_data);
+            DebugLog("AFTER ExchangeCodeForBearerTokenAsync -- our results are:");
+            DebugLog(results);
+            callback({
+                AccessToken: results.access_token,
+                RefreshToken: results.refresh_token,
+                CreatedAt: results.id_token,
+                ExpiresIn: results.expires_in,
+                State: results.state,
+                TokenType: results.token_type
             });
+        
+            // As of March 21 2022, the above already returns a bearer token.  No need to call ExchangeAccessTokenForBearerToken anymore [for now]
+            // ExchangeAccessTokenForBearerTokenAsync(results.AccessToken, function (accessAndRefreshTokens) {
+            //   let final_token_data = {
+            //     AccessToken: accessAndRefreshTokens.AccessToken,
+            //     RefreshToken: results.RefreshToken,
+            //     CreatedAt: accessAndRefreshTokens.CreatedAt,
+            //     ExpiresIn: accessAndRefreshTokens.ExpiresIn
+            //   };
+            //   callback(final_token_data);
+            // });
         });
     }
+    
 
     function RefreshTokenAsync(refreshToken, callback) {
-
+        
         let url = GetBaseAddressForRegion("USA") + "/oauth2/v3/token";
         let body = [
             {"grant_type": "refresh_token"},
@@ -62,23 +99,18 @@
             {"scope": "openid email offline_access"}
         ];
 
-        axios.post(url, JSON.stringify(body),
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'User-Agent': 'TeslaAuthJS/1.0',
-                }
-            }
-        ).then(webResponse => {
-            // console.log("sent POST request " + url + "\ngot response:\n" + webResponse);
-
-            let newTokens = ExchangeAccessTokenForBearerTokenAsync(webResponse.data["access_token"]);
-            newTokens.RefreshToken = webResponse.data["refresh_token"];
-
-            callback(newTokens);
+        axios.post(url, JSON.stringify(body), GetStandardHeaders()).then(webResponse => {
+            DebugLog("sent POST request " + url + "\ngot response:\n" + webResponse);
+            
+            callback({
+                AccessToken: webResponse.data['access_token'],
+                RefreshToken: webResponse.data['refresh_token'],
+                ExpiresIn: webResponse.data['expires_in']
+            });
+            
+            // As of March 21 2022, this returns a bearer token.  No need to call ExchangeAccessTokenForBearerToken ... for now.
         }).catch(function (e) {
-            // console.log("error submitting request...!  0000 \n" + e.toString());
+            DebugLog("error submitting request...!  0000 \n" + e.toString());
         });
     }
 
@@ -92,30 +124,17 @@
         };
 
         let url = GetBaseAddressForRegion("USA") + "/oauth2/v3/token";
-        axios.post(url, JSON.stringify(body),
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'User-Agent': 'TeslaAuthJS/1.0',
-                }
-            }
-        ).then(webResponse => {
-          // console.log("sent POST request " + url + "\ngot response:");
-          // console.log(webResponse.data);
-
-            let final = {
-                AccessToken: webResponse.data["access_token"],
-                RefreshToken: webResponse.data["refresh_token"],
-            };
-            callback(final);
+        axios.post(url, JSON.stringify(body), GetStandardHeaders()).then(webResponse => {
+            DebugLog("sent POST request " + url + "\ngot response:");
+            DebugLog(webResponse.data);
+            callback(webResponse.data);
+            
         }).catch(function (e) {
-            // console.log("error submitting request...! "+url+"\n  1111\n" + e.toString() + "\n"+JSON.stringify(body));
+            DebugError("error submitting request...! "+url+"\n  1111\n" + e.toString() + "\n"+JSON.stringify(body));
         });
-
-
     }
 
+    // NO LONGER USED/NEEDED AS OF MARCH 21 2022
     function ExchangeAccessTokenForBearerTokenAsync(accessToken, callback) {
         let body = {
             "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
@@ -124,16 +143,10 @@
         };
 
         let url = "https://owner-api.teslamotors.com/oauth/token";
-        axios.post(url, JSON.stringify(body),
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'User-Agent': 'TeslaAuthJS/1.0',
-                    'Authorization': 'Bearer ' + accessToken,
-                }
-            }
-        ).then(webResponse => {
+        let headers = GetStandardHeaders();
+        headers['headers']['Authorization'] = 'Bearer ' + accessToken;
+        
+        axios.post(url, JSON.stringify(body), headers).then(webResponse => {
             // var createdAt = ; //DateTimeOffset.FromUnixTimeSeconds(response["created_at"]!.Value<long>());
             // var expiresIn = ; //TimeSpan.FromSeconds(response["expires_in"]!.Value<long>());
             // var bearerToken = ; //!.Value<string>();
@@ -146,11 +159,11 @@
                 ExpiresIn: webResponse.data["expires_in"]
             };
 
-            // console.log("result data...");
-            // console.log(resultData);
+            DebugLog("result data...");
+            DebugLog(resultData);
             callback(resultData);
         }).catch(function (err) {
-            // console.log("error submitting request...! 2222\n" + err.toString());
+            DebugError("error submitting request...! 2222\n" + err.toString());
         });
     }
 
