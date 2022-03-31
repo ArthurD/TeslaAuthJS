@@ -13,6 +13,29 @@
         State: "",
     };
 
+    // Calls the callback with 'TRUE' if login state is valid, otherwise FALSE.
+    function CheckAuthStateAsync(tokenData, callback) {
+        if(tokenData === null || !tokenData.hasOwnProperty('AccessToken')) {
+            // We cannot possibly be logged in if there is no tokenData present.
+            callback(false);
+            return;
+        }
+        let testURL = "https://owner-api.teslamotors.com/api/1/products";
+        let reqHeaders = {
+            "Authorization": "Bearer " + tokenData.AccessToken,
+            "Content-Type": "application/json; charset=utf-8"
+        };
+        DebugLog("CheckAuthStateAsync\n"+ testURL);
+        axios.get(testURL, { 'headers': reqHeaders }).then(function(webResponse) {
+            DebugLog("Auth check.  Sent GET request... \nHTTP Response Code:  "+ webResponse.status);
+            callback(true);
+        }).catch(function (e) {
+            console.log(e);
+            DebugError("Auth check.  FAILED.  HTTP Status code:  "+e.status);
+            callback(false);
+        });
+    }
+
     // Constructor and HttpClient initialisation
     function Init() {
         loginInfo.CodeVerifier = RandomString(86);
@@ -69,28 +92,15 @@
             callback({
                 AccessToken: results.access_token,
                 RefreshToken: results.refresh_token,
-                CreatedAt: results.id_token,
                 ExpiresIn: results.expires_in,
-                State: results.state,
                 TokenType: results.token_type
             });
         
             // As of March 21 2022, the above already returns a bearer token.  No need to call ExchangeAccessTokenForBearerToken anymore [for now]
-            // ExchangeAccessTokenForBearerTokenAsync(results.AccessToken, function (accessAndRefreshTokens) {
-            //   let final_token_data = {
-            //     AccessToken: accessAndRefreshTokens.AccessToken,
-            //     RefreshToken: results.RefreshToken,
-            //     CreatedAt: accessAndRefreshTokens.CreatedAt,
-            //     ExpiresIn: accessAndRefreshTokens.ExpiresIn
-            //   };
-            //   callback(final_token_data);
-            // });
         });
     }
-    
 
     function RefreshTokenAsync(refreshToken, callback) {
-        
         let url = GetBaseAddressForRegion("USA") + "/oauth2/v3/token";
         let body = [
             {"grant_type": "refresh_token"},
@@ -100,17 +110,25 @@
         ];
 
         axios.post(url, JSON.stringify(body), GetStandardHeaders()).then(webResponse => {
-            DebugLog("sent POST request " + url + "\ngot response:\n" + webResponse);
-            
-            callback({
-                AccessToken: webResponse.data['access_token'],
-                RefreshToken: webResponse.data['refresh_token'],
-                ExpiresIn: webResponse.data['expires_in']
-            });
-            
-            // As of March 21 2022, this returns a bearer token.  No need to call ExchangeAccessTokenForBearerToken ... for now.
+            DebugLog("sent POST request " + url + "\ngot response:\n");
+            DebugLog(webResponse.data);
+            let returnVal = {
+                // AccessToken: webResponse.data['access_token'],
+                // RefreshToken: webResponse.data['refresh_token'],
+                // ExpiresIn: webResponse.data['expires_in']
+                AccessToken: webResponse.data["access_token"],
+                RefreshToken: webResponse.data["refresh_token"],
+                CreatedAt: webResponse.data["created_at"],
+                ExpiresIn: webResponse.data["expires_in"]
+            };
+            DebugLog(returnVal);
+            callback(returnVal);
+
+            // As of March 21 2022, this returns what we need -- no need to call ExchangeAccessTokenForBearerToken ... for now.
         }).catch(function (e) {
-            DebugLog("error submitting request...!  0000 \n" + e.toString());
+            DebugError("error submitting request...!  0000 \n");
+            DebugError(e);
+            callback(false);
         });
     }
 
@@ -197,7 +215,9 @@
 
     let auth = {
         GetLoginUrlForBrowser,
-        GetTokenAfterLoginAsync
+        GetTokenAfterLoginAsync,
+        RefreshTokenAsync,
+        CheckAuthStateAsync
     };
 
 module.exports = { auth };
