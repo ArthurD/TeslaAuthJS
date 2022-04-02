@@ -102,12 +102,12 @@
 
     function RefreshTokenAsync(refreshToken, callback) {
         let url = GetBaseAddressForRegion("USA") + "/oauth2/v3/token";
-        let body = [
-            {"grant_type": "refresh_token"},
-            {"client_id": "ownerapi"},
-            {"refresh_token": refreshToken},
-            {"scope": "openid email offline_access"}
-        ];
+        let body = {
+            grant_type: "refresh_token",
+            client_id: "ownerapi",
+            refresh_token: refreshToken,
+            scope: "openid email offline_access",
+        };
 
         axios.post(url, JSON.stringify(body), GetStandardHeaders()).then(webResponse => {
             DebugLog("sent POST request " + url + "\ngot response:\n");
