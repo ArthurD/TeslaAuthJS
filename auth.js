@@ -92,8 +92,9 @@
             callback({
                 AccessToken: results.access_token,
                 RefreshToken: results.refresh_token,
+                TokenType: results.token_type,
                 ExpiresIn: results.expires_in,
-                TokenType: results.token_type
+                CreatedAt: new Date().getTime()
             });
         
             // As of March 21 2022, the above already returns a bearer token.  No need to call ExchangeAccessTokenForBearerToken anymore [for now]
@@ -118,7 +119,7 @@
                 // ExpiresIn: webResponse.data['expires_in']
                 AccessToken: webResponse.data["access_token"],
                 RefreshToken: webResponse.data["refresh_token"],
-                CreatedAt: webResponse.data["created_at"],
+                CreatedAt: new Date().getTime(),
                 ExpiresIn: webResponse.data["expires_in"]
             };
             DebugLog(returnVal);
